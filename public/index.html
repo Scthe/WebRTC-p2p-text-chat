@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="theme-color" content="#CB1482" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+
+    <title>WebRTC Text chat</title>
+    <meta
+      name="description"
+      content="Using WebRTC for peer-to-peer text chat"
+    />
+
+    <style>
+      .msg-username {
+        background: #00dbff;
+        padding: 5px 10px;
+        margin-right: 10px;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+
+    <main>
+      <h1>WebRTC Text chat</h1>
+      <div>
+        <form id="form" action="">
+          <input id="input" autocomplete="off" /><button>Send</button>
+        </form>
+
+        <ul id="messages"></ul>
+      </div>
+    </main>
+
+    <script src="//cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script type="module" src="index.js"></script>
+  </body>
+</html>
