@@ -1,7 +1,63 @@
 /////////////////////////////
-// WebRTC related
+// PeerConnectionsRepo
 
-// TODO normalizer.css
+/** Struct that holds references to all the connections */
+class PeerConnectionsRepo {
+  constructor() {
+    this.connections = {};
+  }
+
+  addConnection(peerId, peerConnection) {
+    this.deleteConnection(peerId);
+    this.connections[peerId] = {
+      peerId,
+      connection: peerConnection,
+      color: "#00dbff",
+      channel: undefined,
+    };
+  }
+
+  hasConnection(peerId) {
+    return Boolean(this.connections[peerId]);
+  }
+
+  getConnection(peerId) {
+    const peerConnection = this.connections[peerId];
+    if (!peerConnection) {
+      throw new Error(
+        `Unexpected message from '${peerId}', we never tried to connect to it?`,
+      );
+    }
+    return peerConnection;
+  }
+
+  deleteConnection(peerId) {
+    delete this.connections[peerId];
+  }
+
+  setChannel(peerId, channel) {
+    const peerConnection = this.getConnection(peerId);
+    peerConnection.channel = channel;
+  }
+
+  sendToAllPeers(message) {
+    if (!message) {
+      return;
+    }
+
+    Object.values(this.connections).forEach((connection) => {
+      const channel = connection.channel;
+      if (channel) {
+        channel.send(message);
+      }
+    });
+  }
+}
+
+const peerConnectionsRepo = new PeerConnectionsRepo();
+
+/////////////////////////////
+// WebRTC related
 
 const ICE_SERVERS = {
   iceServers: [
@@ -11,26 +67,23 @@ const ICE_SERVERS = {
   ],
 };
 
-const createPeerConnection = (peerUserId, handleICECandidate) => {
+const createPeerConnection = (handleICECandidate) => {
   const connection = new RTCPeerConnection(ICE_SERVERS);
-  connection.peerUserId = peerUserId;
   connection.onicecandidate = handleICECandidate;
-
   return connection;
 };
 
-async function createPeerOffer(peerConnection) {
+async function createPeerOffer(peerId, peerConnection) {
   try {
     // offer-side creates the data channel
     const channel = peerConnection.createDataChannel("my-rtc-chat");
-    peerConnection.myRtcChatChannel = channel;
-
+    peerConnectionsRepo.setChannel(peerId, channel);
     channel.onopen = (_event) => {
       channel.send(
         "Hi! You have established peer-to-peer connection with me! Other users will also send you this message once they have their own connection!",
       );
     };
-    channel.onmessage = printUserMessage(peerConnection);
+    channel.onmessage = printUserMessage(peerId);
 
     // create offer
     const offer = await peerConnection.createOffer();
@@ -43,17 +96,17 @@ async function createPeerOffer(peerConnection) {
   }
 }
 
-async function createPeerAnswer(peerConnection) {
+async function createPeerAnswer(peerId, peerConnection) {
   try {
     // answer-side will receive 'new data channel' event
     peerConnection.ondatachannel = (event) => {
       const channel = event.channel;
-      peerConnection.myRtcChatChannel = channel;
+      peerConnectionsRepo.setChannel(peerId, channel);
 
       channel.onopen = (_event) => {
         channel.send("Hi I am new to this chat room!");
       };
-      channel.onmessage = printUserMessage(peerConnection);
+      channel.onmessage = printUserMessage(peerId);
     };
 
     // create answer
@@ -118,17 +171,6 @@ function joinChatRoom(roomId) {
 
 let userName = undefined;
 
-const peerConnections = {};
-const getPeerConnection = (userId) => {
-  const peerConnection = peerConnections[userId];
-  if (!peerConnection) {
-    throw new Error(
-      `Unexpected message from '${userId}', we never tried to connect to it?`,
-    );
-  }
-  return peerConnection;
-};
-
 (async function main() {
   initializeUi();
 
@@ -146,34 +188,31 @@ const getPeerConnection = (userId) => {
 
   socket.on("new-user-joined", async (newUserId) => {
     const handleICECandidate = createICECandidateHandler(newUserId);
-    const peerConnection = createPeerConnection(newUserId, handleICECandidate);
-    peerConnections[newUserId] = peerConnection;
+    const peerConnection = createPeerConnection(handleICECandidate);
+    peerConnectionsRepo.addConnection(newUserId, peerConnection);
 
-    const offer = await createPeerOffer(peerConnection);
+    const offer = await createPeerOffer(newUserId, peerConnection);
     socket.emit("rtc-offer", newUserId, offer);
   });
 
   socket.on("rtc-offer", async (offerUserId, offer) => {
     const handleICECandidate = createICECandidateHandler(offerUserId);
-    const peerConnection = createPeerConnection(
-      offerUserId,
-      handleICECandidate,
-    );
+    const peerConnection = createPeerConnection(handleICECandidate);
     peerConnection.setRemoteDescription(offer);
-    peerConnections[offerUserId] = peerConnection;
+    peerConnectionsRepo.addConnection(offerUserId, peerConnection);
 
-    const answer = await createPeerAnswer(peerConnection);
+    const answer = await createPeerAnswer(offerUserId, peerConnection);
     socket.emit("rtc-answer", offerUserId, answer);
   });
 
   socket.on("rtc-answer", async (answerUserId, answer) => {
-    const peerConnection = getPeerConnection(answerUserId);
-    peerConnection.setRemoteDescription(answer);
+    const { connection } = peerConnectionsRepo.getConnection(answerUserId);
+    connection.setRemoteDescription(answer);
   });
 
   socket.on("ice-candidate", async (peerUserId, candidate) => {
-    const peerConnection = getPeerConnection(peerUserId);
-    await peerConnection.addIceCandidate(candidate);
+    const { connection } = peerConnectionsRepo.getConnection(peerUserId);
+    await connection.addIceCandidate(candidate);
   });
 })();
 
@@ -189,21 +228,6 @@ function logPeer(...args) {
 /////////////////////////////
 // ui
 
-function sendToAllPeers(message) {
-  if (!message) {
-    return false;
-  }
-
-  Object.values(peerConnections).forEach((peerConnection) => {
-    const channel = peerConnection.myRtcChatChannel;
-    if (channel) {
-      channel.send(message);
-    }
-  });
-
-  addLogLine("ME:", message);
-}
-
 function initializeUi() {
   const form = document.getElementById("form");
   const input = document.getElementById("input");
@@ -215,21 +239,22 @@ function initializeUi() {
       return;
     }
 
-    sendToAllPeers(message);
+    addLogLine(LOG_ENTITY.Me, message);
+    peerConnectionsRepo.sendToAllPeers(message);
     input.value = "";
   });
 }
 
-const printUserMessage = (peerConnection) => (message) => {
-  const username = peerConnection.peerUserId;
+const printUserMessage = (peerId) => (message) => {
   logPeer("Received", message);
-  addLogLine(username, message.data || "");
+  addLogLine(peerId, message.data || "");
 };
 
-/*const LOG_ENTITY = {
+const LOG_ENTITY = {
+  Me: 0,
   Socket: 1,
   Rtc: 2,
-};*/
+};
 
 function addLogLine(username, message) {
   // TODO color per user
@@ -247,10 +272,18 @@ function addLogLine(username, message) {
     classNames.push("log-rtc");
     username = "[WebRTC]";
   }*/
+  let color = undefined;
+  if (username === LOG_ENTITY.Me) {
+    username = "Me";
+    color = "hsl(0, 0%, 85%)";
+  } else if (peerConnectionsRepo.hasConnection(username)) {
+    color = peerConnectionsRepo.getConnection(username).color;
+  }
 
   const usernameEl = document.createElement("span");
   usernameEl.textContent = username;
   usernameEl.className = "msg-username";
+  usernameEl.style.background = color;
   const messageEl = document.createElement("span");
   messageEl.textContent = message;
 
