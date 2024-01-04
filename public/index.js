@@ -1,12 +1,5 @@
-// TODO make disconnect button work
-// TODO add initial screen to join/create room
-// TODO format log messages
-// TODO color per user
-// TODO after creating room, set own query param? can be through the #-param instead of query-param. Or local storage
-// TODO add disconnect button
-// TODO auto scroll?
-// TODO put the input at the bottom, next to the disconnect button?
-// TODO show system messages to the user too. Not full js objects, just the texts. Add 'msg-system' class and grey it out a bit
+// TODO responsive to easier test on mobile
+// TODO handle rpc disconnect event. Remove from PeerConnectionsRepo, add systemMessage and that's it? Also can be triggered from socket server after socket has DCed
 
 /////////////////////////////
 // PeerConnectionsRepo
@@ -19,13 +12,15 @@ class PeerConnectionsRepo {
 
   addConnection(peerId, peerConnection) {
     this.deleteConnection(peerId);
-    this.connections[peerId] = {
+    const c = {
       peerId,
       connection: peerConnection,
       color: getRandomColor(), // "#00dbff",
       channel: undefined,
     };
+    this.connections[peerId] = c;
     this._updateUserCount();
+    return c;
   }
 
   hasConnection(peerId) {
@@ -74,12 +69,61 @@ class PeerConnectionsRepo {
 const peerConnectionsRepo = new PeerConnectionsRepo();
 
 /////////////////////////////
+// Room id storage etc.
+const LOCAL_STORAGE_ROOM_ID_KEY = "roomId";
+
+const isValidRoomId = (roomId) =>
+  roomId &&
+  typeof roomId === "string" &&
+  roomId.length > 3 &&
+  roomId !== String(undefined);
+
+function getRoomIdFromUrl() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const roomId = searchParams.get("roomId");
+  return isValidRoomId(roomId) ? roomId : undefined;
+}
+
+const setLocalStorageRoom = (roomId) => {
+  if (!roomId) {
+    localStorage.removeItem(LOCAL_STORAGE_ROOM_ID_KEY);
+  } else {
+    localStorage.setItem(LOCAL_STORAGE_ROOM_ID_KEY, roomId);
+  }
+};
+
+const getLocalStorageRoom = () => {
+  const roomId = localStorage.getItem(LOCAL_STORAGE_ROOM_ID_KEY);
+  return isValidRoomId(roomId) ? roomId : undefined;
+};
+
+function getRoomId() {
+  const fromUrl = getRoomIdFromUrl();
+  const fromLocalStorage = getLocalStorageRoom();
+  if (fromUrl) return fromUrl;
+  if (fromLocalStorage) return fromLocalStorage;
+  return undefined;
+}
+
+function createUrlWithRoomId(roomId) {
+  return `${window.location.origin}?roomId=${roomId}`;
+}
+
+/** Remove query params, local storage, redirect back to '/' to start new room */
+function leaveRoom() {
+  setLocalStorageRoom(undefined);
+  // reload page without query params
+  window.location = window.location.href.split("?")[0];
+}
+
+/////////////////////////////
 // WebRTC related
 
+// Could use https://www.metered.ca/tools/openrelay/ for free TURN too
 const ICE_SERVERS = {
   iceServers: [
     {
-      urls: "stun:openrelay.metered.ca:80",
+      urls: ["stun:openrelay.metered.ca:80", "stun:stun.l.google.com:19302"],
     },
   ],
 };
@@ -141,7 +185,6 @@ async function createPeerAnswer(peerId, peerConnection) {
 // Socket related
 
 const createSocketConnection = () => {
-  // const socket = io(`ws://${window.location.host}:3005`);
   const socket = io();
   socket.onAny((...args) => {
     const [name, ...args2] = args;
@@ -149,7 +192,11 @@ const createSocketConnection = () => {
   });
 
   socket.on("disconnect", () => {
-    // TODO handle
+    renderSystemMessage(`Lost connection to the socket server`);
+    renderSystemMessage(
+      `You can still send peer-to-peer messages, but there are no delivery guarantees`,
+    );
+    renderSystemMessage(`Other users may assume you have left the room`);
   });
 
   return socket;
@@ -160,23 +207,21 @@ function createChatRoom() {
 
   const socket = createSocketConnection();
   socket.on("room-created", (roomId) => {
-    // TODO create link in ui!
-    // console.log({ roomId });
+    setLocalStorageRoom(roomId);
+
+    const link = createUrlWithRoomId(roomId);
+    renderSystemMessage(`New chat room '${roomId}' created`);
+    renderSystemMessage(`Share link: '${link}'`);
+    renderSystemMessage(`Awaiting new users.`);
   });
   socket.emit("create-room");
   return socket;
 }
 
-function getRoomIdFromUrl() {
-  const searchParams = new URLSearchParams(window.location.search);
-  const roomId = searchParams.get("roomId");
-  const isValidRoomId =
-    roomId && typeof roomId === "string" && roomId.length > 3;
-  return isValidRoomId ? roomId : undefined;
-}
-
 function joinChatRoom(roomId) {
   console.log(`Joining room '${roomId}'`);
+  renderSystemMessage(`Joined chat room '${roomId}'`);
+  renderSystemMessage(`Awaiting ICE offers from other chat room members`);
 
   const socket = createSocketConnection();
   socket.emit("join-room", roomId);
@@ -191,7 +236,7 @@ let userName = undefined;
 (async function main() {
   initializeUi();
 
-  const roomId = getRoomIdFromUrl();
+  const roomId = getRoomId();
   const socket = roomId ? joinChatRoom(roomId) : createChatRoom();
   userName = socket.id;
 
@@ -201,12 +246,16 @@ let userName = undefined;
     if (event.candidate) {
       socket.emit("ice-candidate", peerUserId, event.candidate);
     }
+
+    const c = peerConnectionsRepo.getConnection(peerUserId);
+    renderSystemMessage(c, `Found ICE candidate`);
   };
 
   socket.on("new-user-joined", async (newUserId) => {
     const handleICECandidate = createICECandidateHandler(newUserId);
     const peerConnection = createPeerConnection(handleICECandidate);
-    peerConnectionsRepo.addConnection(newUserId, peerConnection);
+    const c = peerConnectionsRepo.addConnection(newUserId, peerConnection);
+    renderSystemMessage(c, `New user joined. Sending ICE offer.`);
 
     const offer = await createPeerOffer(newUserId, peerConnection);
     socket.emit("rtc-offer", newUserId, offer);
@@ -216,20 +265,28 @@ let userName = undefined;
     const handleICECandidate = createICECandidateHandler(offerUserId);
     const peerConnection = createPeerConnection(handleICECandidate);
     peerConnection.setRemoteDescription(offer);
-    peerConnectionsRepo.addConnection(offerUserId, peerConnection);
+    const c = peerConnectionsRepo.addConnection(offerUserId, peerConnection);
+    renderSystemMessage(c, `Received ICE offer. Sending answer.`);
 
     const answer = await createPeerAnswer(offerUserId, peerConnection);
     socket.emit("rtc-answer", offerUserId, answer);
   });
 
   socket.on("rtc-answer", async (answerUserId, answer) => {
-    const { connection } = peerConnectionsRepo.getConnection(answerUserId);
+    const c = peerConnectionsRepo.getConnection(answerUserId);
+    const { connection } = c;
     connection.setRemoteDescription(answer);
+    renderSystemMessage(
+      c,
+      `Received ICE answer. Starting CANDIDATE PAIR checks.`,
+    );
   });
 
   socket.on("ice-candidate", async (peerUserId, candidate) => {
-    const { connection } = peerConnectionsRepo.getConnection(peerUserId);
+    const c = peerConnectionsRepo.getConnection(peerUserId);
+    const { connection } = c;
     await connection.addIceCandidate(candidate);
+    renderSystemMessage(c, `Received ICE candidate from the peer`);
   });
 })();
 
@@ -245,6 +302,9 @@ function logPeer(...args) {
 /////////////////////////////
 // ui
 
+/** Special value indicating that we are the author of the message */
+const USERNAME_ME = undefined;
+
 function initializeUi() {
   const form = document.getElementById("form");
   const input = document.getElementById("input");
@@ -256,10 +316,33 @@ function initializeUi() {
       return;
     }
 
-    addLogLine(LOG_ENTITY.Me, message);
+    renderUserMessage(USERNAME_ME, message);
     peerConnectionsRepo.sendToAllPeers(message);
     input.value = "";
   });
+
+  const disconnectBtn = document.getElementById("disconnect-btn");
+  disconnectBtn.onclick = leaveRoom;
+
+  const shareBtn = document.getElementById("share-btn");
+  shareBtn.onclick = async () => {
+    const roomId = getRoomId();
+    if (!roomId) {
+      renderSystemMessage(
+        `Cannot share chat room yet. Please retry in a few seconds`,
+      );
+      return;
+    }
+
+    const link = createUrlWithRoomId(roomId);
+    renderSystemMessage(`Chat room share link: '${link}'`);
+    try {
+      await navigator.clipboard.writeText(link);
+      renderSystemMessage(`It has been added to your clipboard`);
+    } catch (e) {
+      console.log("Could not update clipboard", e);
+    }
+  };
 
   const messagesEl = document.getElementById("messages-container");
   messagesEl.onscroll = updateMessagesContainerScroll;
@@ -272,37 +355,20 @@ function updateUserCountEl(count) {
 
 const printUserMessage = (peerId) => (message) => {
   logPeer("Received", message);
-  addLogLine(peerId, message.data || "");
+  renderUserMessage(peerId, message.data || "");
 };
 
-const LOG_ENTITY = {
-  Me: 0,
-  Socket: 1,
-  Rtc: 2,
-};
-
-function addLogLine(username, message) {
-  /*
-  const classNames = [];
-  if (username == LOG_ENTITY.Socket) {
-    classNames.push("log-socket");
-    username = "[SocketServer]";
-  } else if (username == LOG_ENTITY.Rtc) {
-    classNames.push("log-rtc");
-    username = "[WebRTC]";
-  }*/
+function renderUserMessage(peerId, message) {
   let color = undefined;
-  if (username === LOG_ENTITY.Me) {
-    username = "Me";
+  if (peerId === USERNAME_ME) {
+    peerId = "Me";
     color = "hsl(0, 0%, 85%)";
-  } else if (peerConnectionsRepo.hasConnection(username)) {
-    color = peerConnectionsRepo.getConnection(username).color;
+  } else if (peerConnectionsRepo.hasConnection(peerId)) {
+    color = peerConnectionsRepo.getConnection(peerId).color;
   }
 
-  const wasAtBottom = isMessagesContainerAtBottom();
-
   const usernameEl = document.createElement("span");
-  usernameEl.textContent = username;
+  usernameEl.textContent = peerId;
   usernameEl.className = "msg-username";
   usernameEl.style.background = color;
   const dateEl = document.createElement("span");
@@ -312,11 +378,44 @@ function addLogLine(username, message) {
   messageEl.textContent = message;
   messageEl.className = "msg-text";
 
+  appendMessage("msg-text-container", [usernameEl, dateEl, messageEl]);
+}
+
+function getMessageDate() {
+  const date = new Date();
+  return date.toLocaleTimeString();
+}
+
+function renderSystemMessage(peerConnection, message) {
+  if (!message && typeof peerConnection === "string") {
+    message = peerConnection;
+    peerConnection = undefined;
+  }
+  // console.log(peerConnection, message);
+
+  let usernameEl = undefined;
+  if (peerConnection) {
+    usernameEl = document.createElement("span");
+    usernameEl.textContent = peerConnection.peerId;
+    usernameEl.className = "msg-username";
+    usernameEl.style.color = peerConnection.color;
+    usernameEl.style.padding = "0";
+  }
+  const textEl = document.createElement("span");
+  textEl.textContent = message;
+  textEl.className = "msg-system-text";
+
+  appendMessage("msg-system-container", [usernameEl, textEl]);
+}
+
+function appendMessage(className, children) {
+  const wasAtBottom = isMessagesContainerAtBottom();
+
   const itemEl = document.createElement("li");
-  itemEl.appendChild(usernameEl);
-  itemEl.appendChild(dateEl);
-  itemEl.appendChild(messageEl);
-  itemEl.className = "msg-container";
+  itemEl.classList.add(className);
+  itemEl.classList.add("msg-container");
+  children.forEach((ch) => Boolean(ch) && itemEl.appendChild(ch));
+
   // TBH not needed, 'id' atttribute creates a global variable. Would be even faster that way (cached)
   const messages = document.getElementById("messages");
   messages.appendChild(itemEl);
@@ -326,28 +425,8 @@ function addLogLine(username, message) {
   }
 }
 
-function getMessageDate() {
-  const date = new Date();
-  return date.toLocaleTimeString();
-}
-
-const randomFromArray = (items) =>
-  items[Math.floor(Math.random() * items.length)];
-
-function getRandomColor() {
-  const colors = [
-    "lch(80.09% 47 220)",
-    "lch(80.09% 47 190)",
-    "lch(80.09% 47 160)",
-    "lch(80.09% 47 130)",
-    "lch(80.09% 47 100)",
-    "lch(80.09% 47 60)",
-    "lch(67.8% 47 28)",
-    "lch(67.8% 47 300)",
-    "lch(67.8% 47 270)",
-  ];
-  return randomFromArray(colors);
-}
+/////////////////////////////
+// ui - messages container scroll behaviour
 
 function isMessagesContainerAtBottom() {
   const el = document.getElementById("messages-container");
@@ -375,4 +454,25 @@ function toggleClass(el, clazz, onOrOff) {
   if (onOrOff) {
     el.classList.add(clazz);
   }
+}
+
+/////////////////////////////
+// misc
+
+const randomFromArray = (items) =>
+  items[Math.floor(Math.random() * items.length)];
+
+function getRandomColor() {
+  const colors = [
+    "lch(80.09% 47 220)",
+    "lch(80.09% 47 190)",
+    "lch(80.09% 47 160)",
+    "lch(80.09% 47 130)",
+    "lch(80.09% 47 100)",
+    "lch(80.09% 47 60)",
+    "lch(67.8% 47 28)",
+    "lch(67.8% 47 300)",
+    "lch(67.8% 47 270)",
+  ];
+  return randomFromArray(colors);
 }

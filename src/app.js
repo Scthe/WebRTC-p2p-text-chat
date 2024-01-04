@@ -24,21 +24,17 @@ const io = new Server(server);
 io.on("connection", (socket) => {
   const userId = socket.id;
   const chalkColor = getRandomChalkColor();
-  let roomId = undefined;
   logSocket(`New socket connection userId=${userId}`);
 
-  // TODO send back the roomId?
   socket.on("create-room", () => {
-    if (roomId == null) {
-      roomId = "jNdKguxVBe"; // nanoid(10);
-      socket.join(roomNs(roomId));
-      socket.emit("room-created", roomId);
-    }
+    const roomId = "jNdKguxVBe"; // nanoid(10);
+    socket.join(roomNs(roomId));
+    socket.emit("room-created", roomId);
   });
 
   socket.on("join-room", (roomId) => {
     // const { rooms } = io.sockets.adapter;
-    // const room = rooms.get(roomId); // TODO handle if does not exist etc.
+    // const room = rooms.get(roomId); // TODO handle if does not exist etc. Just create a new room instead?
 
     socket.join(roomNs(roomId));
     // everyone gets it but the sender
@@ -60,7 +56,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     // TODO inform rooms, remove from rooms
-    logSocket("user disconnected");
+    logSocket("User disconnected");
   });
 
   socket.onAny((event, ...args) => {
