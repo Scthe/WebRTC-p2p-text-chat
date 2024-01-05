@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
     />
-    <meta name="theme-color" content="#CB1482" />
+    <meta name="theme-color" content="#47a6d8" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
 
@@ -50,7 +50,7 @@
         --messages-spacing: 20px;
         background-color: #47a6d8;
         margin: 0;
-        padding: 20px 0;
+        padding: 10px 0;
         display: flex;
         flex-direction: column;
         color: var(--text-color);
@@ -58,7 +58,7 @@
 
       .main {
         flex-grow: 1;
-        width: 600px;
+        width: calc(min(600px, 100%));
         /* change svg buttons too*/
         background-color: #f5f5f5;
         height: 100vh;
@@ -67,6 +67,29 @@
         border-radius: 10px;
         display: flex;
         flex-direction: column;
+      }
+
+      @media (max-width: 450px) {
+        body {
+          padding: 0;
+        }
+
+        .main {
+          margin: 0;
+          border-radius: 0;
+          padding: 5px;
+        }
+
+        .header h1 {
+          text-align: center;
+          margin-top: 0;
+          font-size: 1em;
+          margin-bottom: 5px;
+        }
+
+        .has-more-messages-indicator {
+          display: none;
+        }
       }
 
       .svg-btn {
@@ -105,6 +128,11 @@
         background-color: lch(67.37% 72.16 32.95);
       }
 
+      .users-container {
+        display: flex;
+        align-items: center;
+      }
+
       .share-btn {
         --size: 40px;
         background-color: lch(47.37% 72.16 250);
@@ -112,9 +140,14 @@
         width: var(--size);
         padding: 5px;
         margin-right: 10px;
+        display: inline-block;
       }
       .share-btn:hover {
         background-color: lch(67.37% 72.16 250);
+      }
+
+      .user-count-wrapper {
+        display: inline-block;
       }
 
       .messages-container {
@@ -211,6 +244,7 @@
         border-radius: var(--border-radius-sm);
         box-shadow: none;
         border: 1px solid #959595;
+        width: 0;
       }
 
       .send-btn {
@@ -233,13 +267,11 @@
     <noscript>You need to enable JavaScript to run this app.</noscript>
 
     <main class="main">
+      <!-- Header -->
       <div class="header">
         <h1>WebRTC Text chat</h1>
         <div class="header-state-row">
-          <div>Users: <span id="user-count">1</span></div>
-          <div class="has-more-messages-indicator">Scrolled!</div>
-
-          <div>
+          <div class="users-container">
             <button id="share-btn" class="svg-btn share-btn" title="Share">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 210">
                 <path
@@ -248,21 +280,26 @@
                 />
               </svg>
             </button>
-
-            <button
-              id="disconnect-btn"
-              class="svg-btn disconnect-btn"
-              title="Disconnect"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -0.5 16 16">
-                <path
-                  fill="#f5f5f5"
-                  fill-rule="evenodd"
-                  d="M10 2h6V0h-6v2Zm4.811 10.751-.038.115.038-.115Zm-.08.242.042-.127-.043.13-.078.238.078-.238c-.464 1.407-2.277 2.108-3.573 1.991-1.77-.159-3.696-1.098-5.158-2.132C3.85 11.335 1.84 8.983.664 6.488-.165 4.725-.35 2.558.884.951c.455-.595.947-.912 1.69-.948C3.6-.047 3.744.54 4.096 1.457c.263.684.614 1.383.81 2.093.367 1.326-.915 1.38-1.077 2.464-.102.683.726 1.599 1.101 2.086a10.102 10.102 0 0 0 2.607 2.403c.57.358 1.49 1.005 2.141.648 1.003-.549.908-2.243 2.313-1.67.727.297 1.43.723 2.125 1.097 1.072.577 1.022 1.175.614 2.415Z"
-                />
-              </svg>
-            </button>
+            <div class="user-count-wrapper">
+              Users: <span id="user-count">1</span>
+            </div>
           </div>
+
+          <div class="has-more-messages-indicator">Scrolled!</div>
+
+          <button
+            id="disconnect-btn"
+            class="svg-btn disconnect-btn"
+            title="Disconnect"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -0.5 16 16">
+              <path
+                fill="#f5f5f5"
+                fill-rule="evenodd"
+                d="M10 2h6V0h-6v2Zm4.811 10.751-.038.115.038-.115Zm-.08.242.042-.127-.043.13-.078.238.078-.238c-.464 1.407-2.277 2.108-3.573 1.991-1.77-.159-3.696-1.098-5.158-2.132C3.85 11.335 1.84 8.983.664 6.488-.165 4.725-.35 2.558.884.951c.455-.595.947-.912 1.69-.948C3.6-.047 3.744.54 4.096 1.457c.263.684.614 1.383.81 2.093.367 1.326-.915 1.38-1.077 2.464-.102.683.726 1.599 1.101 2.086a10.102 10.102 0 0 0 2.607 2.403c.57.358 1.49 1.005 2.141.648 1.003-.549.908-2.243 2.313-1.67.727.297 1.43.723 2.125 1.097 1.072.577 1.022 1.175.614 2.415Z"
+              />
+            </svg>
+          </button>
         </div>
       </div>
 

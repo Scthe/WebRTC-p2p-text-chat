@@ -26,19 +26,25 @@ io.on("connection", (socket) => {
   const chalkColor = getRandomChalkColor();
   logSocket(`New socket connection userId=${userId}`);
 
-  socket.on("create-room", () => {
-    const roomId = "jNdKguxVBe"; // nanoid(10);
+  const createNewRoom = () => {
+    const roomId = nanoid(10); // "jNdKguxVBe";
     socket.join(roomNs(roomId));
     socket.emit("room-created", roomId);
-  });
+  };
+
+  socket.on("create-room", createNewRoom);
 
   socket.on("join-room", (roomId) => {
-    // const { rooms } = io.sockets.adapter;
-    // const room = rooms.get(roomId); // TODO handle if does not exist etc. Just create a new room instead?
-
-    socket.join(roomNs(roomId));
-    // everyone gets it but the sender
-    socket.broadcast.to(roomNs(roomId)).emit("new-user-joined", userId);
+    const { rooms } = io.sockets.adapter;
+    const room = rooms.get(roomNs(roomId));
+    if (!room) {
+      logSocket(`User tried joining room '${roomId}' that does not exist?`);
+      createNewRoom();
+    } else {
+      socket.join(roomNs(roomId));
+      // everyone gets it but the sender
+      socket.broadcast.to(roomNs(roomId)).emit("new-user-joined", userId);
+    }
   });
 
   // Forward the offer from `userId` to `peerUserId`
@@ -54,9 +60,14 @@ io.on("connection", (socket) => {
     emitToUser(peerUserId, "ice-candidate", userId, candidate);
   });
 
-  socket.on("disconnect", () => {
-    // TODO inform rooms, remove from rooms
-    logSocket("User disconnected");
+  socket.on("disconnecting", () => {
+    // No need to remove from rooms, 'socket.io' already does that for us.
+    // Just inform other users that the peer might have DCed
+    const chatRooms = getChatRooms(socket);
+    console.log("Disconnecting from rooms:", chatRooms);
+    chatRooms.forEach((roomId) =>
+      socket.broadcast.to(roomId).emit("user-disconnected", userId),
+    );
   });
 
   socket.onAny((event, ...args) => {
@@ -72,7 +83,14 @@ io.on("connection", (socket) => {
   }
 });
 
-const roomNs = (roomId) => `chat-room/${roomId}`;
+const CHAT_ROOM_NS = "chat-room";
+
+const roomNs = (roomId) => `${CHAT_ROOM_NS}/${roomId}`;
+
+const getChatRooms = (socket) => {
+  const { rooms } = socket;
+  return [...rooms].filter((e) => e.startsWith(CHAT_ROOM_NS));
+};
 
 const randomFromArray = (items) =>
   items[Math.floor(Math.random() * items.length)];
