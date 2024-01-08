@@ -3,7 +3,6 @@ const chalk = require("chalk");
 const { nanoid } = require("nanoid");
 const { Server } = require("socket.io");
 
-// TODO auto-tunnel so we can test p2p outside local network? Does tunelling work with sockets?
 const EXPRESS_PORT = 3000;
 
 // Express server to serve HTML
@@ -64,7 +63,7 @@ io.on("connection", (socket) => {
     // No need to remove from rooms, 'socket.io' already does that for us.
     // Just inform other users that the peer might have DCed
     const chatRooms = getChatRooms(socket);
-    console.log("Disconnecting from rooms:", chatRooms);
+    logSocket("Disconnecting from rooms:", chatRooms);
     chatRooms.forEach((roomId) =>
       socket.broadcast.to(roomId).emit("user-disconnected", userId),
     );

@@ -1,5 +1,3 @@
-// TODO nicer formatting for chat share link
-
 /////////////////////////////
 // PeerConnectionsRepo
 
@@ -214,7 +212,7 @@ async function createPeerAnswer(peerId, peerConnection) {
       peerConnectionsRepo.setChannel(peerId, channel);
 
       channel.onopen = (_event) => {
-        channel.send("Hi I am new to this chat room!");
+        channel.send("Hi, I am new to this chat room!");
       };
     };
 
@@ -290,9 +288,9 @@ let userName = undefined;
       );
     }
 
-    const link = createUrlWithRoomId(roomId);
+    const linkEl = createRoomUrlLinkEl(roomId);
     renderSystemMessage(`New chat room '${roomId}' created`);
-    renderSystemMessage(`Share link: '${link}'`);
+    renderSystemMessage(`Share link: `, linkEl);
     renderSystemMessage(`Awaiting new users.`);
   });
 
@@ -386,8 +384,8 @@ async function shareRoomLink() {
     return;
   }
 
-  const link = createUrlWithRoomId(roomId);
-  renderSystemMessage(`Chat room share link: '${link}'`);
+  const linkEl = createRoomUrlLinkEl(roomId);
+  renderSystemMessage(`Chat room share link: `, linkEl);
   try {
     await navigator.clipboard.writeText(link);
     renderSystemMessage(`It has been added to your clipboard`);
@@ -399,6 +397,17 @@ async function shareRoomLink() {
 function updateUserCountEl(count) {
   const el = document.getElementById("user-count");
   el.textContent = count;
+}
+
+function createRoomUrlLinkEl(roomId) {
+  const link = createUrlWithRoomId(roomId);
+  const el = document.createElement("a");
+  el.href = link;
+  el.rel = "noopener noreferrer nofollow";
+  el.target = "_blank";
+  el.textContent = link;
+  el.className = "msg-link";
+  return el;
 }
 
 /////////////////////////////
@@ -437,12 +446,11 @@ function getMessageDate() {
   return date.toLocaleTimeString();
 }
 
-function renderSystemMessage(peerConnection, message) {
-  if (!message && typeof peerConnection === "string") {
-    message = peerConnection;
+function renderSystemMessage(peerConnection, ...msgParts) {
+  if (typeof peerConnection !== "object") {
+    msgParts = [peerConnection, ...msgParts];
     peerConnection = undefined;
   }
-  // console.log(peerConnection, message);
 
   let usernameEl = undefined;
   if (peerConnection) {
@@ -452,11 +460,17 @@ function renderSystemMessage(peerConnection, message) {
     usernameEl.style.color = peerConnection.color;
     usernameEl.style.padding = "0";
   }
-  const textEl = document.createElement("span");
-  textEl.textContent = message;
-  textEl.className = "msg-system-text";
+  const msgElements = msgParts.map((msgPart) => {
+    if (typeof msgPart !== "string") {
+      return msgPart;
+    }
+    const textEl = document.createElement("span");
+    textEl.textContent = msgPart;
+    textEl.className = "msg-system-text";
+    return textEl;
+  });
 
-  appendMessage("msg-system-container", [usernameEl, textEl]);
+  appendMessage("msg-system-container", [usernameEl, ...msgElements]);
 }
 
 function appendMessage(className, children) {
