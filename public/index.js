@@ -159,7 +159,7 @@ const createPeerConnection = (socket, peerId) => {
   connection.onicecandidate = (event) => {
     logPeer(peerId, `Created ICE candidate to '${peerId}:'`, event);
 
-    if (event.candidate) {
+    if (event.candidate !== null) {
       socket.emit("ice-candidate", peerId, event.candidate);
     }
 
