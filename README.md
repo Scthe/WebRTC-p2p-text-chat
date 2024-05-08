@@ -1,5 +1,7 @@
 # Peer-to-peer WebRTC text chat
 
+> This is an example app for my article: ["WebRTC guide"](https://www.sctheblog.com/blog/webrtc-intro/).
+
 This is a small web app that uses [Web Real-Time Communication](https://en.wikipedia.org/wiki/WebRTC) (`WebRTC`) for between-browser [peer-to-peer](https://en.wikipedia.org/wiki/Peer-to-peer) (`p2p`) communication. The biggest problem when using a webpage for p2p is finding the communication channel. How can device A know the IP of the device B? This is resolved using the [Interactive Connectivity Establishment](https://en.wikipedia.org/wiki/Interactive_Connectivity_Establishment) (`ICE`) protocol. It generates a few connection candidates (e.g. inside a local network, through public IP, or an intermediary TURN server). Then it selects one to facilitate message exchange.
 
 ![Chat between 3 users](gh-images/webrtc-text-chat.png?raw=true)
